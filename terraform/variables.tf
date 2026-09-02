@@ -57,3 +57,7 @@ variable "image_tag" {
   type        = string
   default     = "bootstrap"
 }
+variable "github_repository" {
+  description = "GitHub repository allowed to deploy to AWS"
+  type        = string
+}

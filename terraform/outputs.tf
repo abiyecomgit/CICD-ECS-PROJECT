@@ -25,3 +25,7 @@ output "alb_dns_name" {
 output "application_url" {
   value = "http://${aws_lb.app.dns_name}"
 }
+output "github_actions_role_arn" {
+  description = "IAM role used by GitHub Actions"
+  value       = aws_iam_role.github_actions.arn
+}
