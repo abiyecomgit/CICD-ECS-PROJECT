@@ -30,19 +30,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Authenticate to AWS using GitHub OIDC
+      # Step 2: Inspect GitHub OIDC claims
+      # Temporary troubleshooting step.
+      # It prints only selected claims, not the full token.
+      - name: Inspect GitHub OIDC claims
+        shell: bash
+        run: |
+          RESPONSE=$(curl -sS \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+
+          TOKEN=$(echo "$RESPONSE" | jq -r '.value')
+
+          PAYLOAD=$(echo "$TOKEN" | cut -d '.' -f2)
+
+          case $((${#PAYLOAD} % 4)) in
+            2) PAYLOAD="${PAYLOAD}==" ;;
+            3) PAYLOAD="${PAYLOAD}=" ;;
+          esac
+
+          echo "$PAYLOAD" \
+            | tr '_-' '/+' \
+            | base64 -d 2>/dev/null \
+            | jq '{
+                sub,
+                aud,
+                repository,
+                ref,
+                environment
+              }'
+
+      # Step 3: Authenticate to AWS using GitHub OIDC
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Step 3: Login to Amazon ECR
+      # Step 4: Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Step 4: Build and push Docker image
+      # Step 5: Build and push Docker image
       - name: Build and push Docker image
         id: build-image
         env:
@@ -60,7 +90,7 @@ jobs:
 
           echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
-      # Step 5: Get current ECS task definition
+      # Step 6: Get current ECS task definition
       - name: Download current ECS task definition
         run: |
           TASK_DEFINITION=$(aws ecs describe-services \
@@ -76,7 +106,7 @@ jobs:
             --query "taskDefinition" \
             > task-definition.json
 
-      # Step 6: Update the Docker image in the task definition
+      # Step 7: Update the Docker image in the task definition
       - name: Render Amazon ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
@@ -85,7 +115,7 @@ jobs:
           container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
-      # Step 7: Register new ECS task definition
+      # Step 8: Register new ECS task definition
       - name: Register new ECS task definition
         id: register-task
         run: |
@@ -96,7 +126,7 @@ jobs:
 
           echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
 
-      # Step 8: Deploy updated task definition to ECS
+      # Step 9: Deploy updated task definition to ECS
       - name: Deploy updated image to ECS
         run: |
           aws ecs update-service \
@@ -105,14 +135,14 @@ jobs:
             --task-definition "${{ steps.register-task.outputs.task_definition_arn }}" \
             --force-new-deployment
 
-      # Step 9: Wait for ECS service to stabilize
+      # Step 10: Wait for ECS service to stabilize
       - name: Wait for ECS deployment
         run: |
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
 
-      # Step 10: Confirm deployment
+      # Step 11: Confirm deployment
       - name: Deployment completed
         run: |
           echo "Deployment completed successfully."
