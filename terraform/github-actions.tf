@@ -36,26 +36,25 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
       variable = "token.actions.githubusercontent.com:sub"
 
       values = [
-        "repo:${var.github_repository}:ref:refs/heads/main"
+        "repo:${var.github_repository}:environment:production"
       ]
     }
   }
 }
 
 resource "aws_iam_role" "github_actions" {
-  name = "${var.project_name}-github-actions-role"
-
+  name               = "${var.project_name}-github-actions-role"
   assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
 
   tags = {
     Name = "${var.project_name}-github-actions-role"
   }
 }
+
 data "aws_iam_policy_document" "github_actions_permissions" {
 
   statement {
-    sid = "ECRAuthorization"
-
+    sid    = "ECRAuthorization"
     effect = "Allow"
 
     actions = [
@@ -66,8 +65,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
   }
 
   statement {
-    sid = "ECRPush"
-
+    sid    = "ECRPush"
     effect = "Allow"
 
     actions = [
@@ -85,8 +83,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
   }
 
   statement {
-    sid = "ECSDeployment"
-
+    sid    = "ECSDeployment"
     effect = "Allow"
 
     actions = [
@@ -100,8 +97,7 @@ data "aws_iam_policy_document" "github_actions_permissions" {
   }
 
   statement {
-    sid = "PassECSRoles"
-
+    sid    = "PassECSRoles"
     effect = "Allow"
 
     actions = [

@@ -26,41 +26,41 @@ jobs:
       CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
 
     steps:
-
-      # Step 1: Download repository code
+      # Step 1: Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Authenticate GitHub Actions to AWS using OIDC
+      # Step 2: Authenticate to AWS using GitHub OIDC
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
 
       # Step 3: Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Step 4: Build Docker image and push it to ECR
+      # Step 4: Build and push Docker image
       - name: Build and push Docker image
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
           docker build \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            --platform linux/amd64 \
+            -t "$IMAGE_URI" \
             .
 
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push "$IMAGE_URI"
 
-          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
-      # Step 5: Find the task definition currently used by ECS
+      # Step 5: Get current ECS task definition
       - name: Download current ECS task definition
         run: |
           TASK_DEFINITION=$(aws ecs describe-services \
@@ -76,25 +76,43 @@ jobs:
             --query "taskDefinition" \
             > task-definition.json
 
-      # Step 6: Replace old Docker image with newly built image
+      # Step 6: Update the Docker image in the task definition
       - name: Render Amazon ECS task definition
         id: task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
           task-definition: task-definition.json
-          container-name: ${{ vars.CONTAINER_NAME }}
+          container-name: ${{ env.CONTAINER_NAME }}
           image: ${{ steps.build-image.outputs.image }}
 
-      # Step 7: Deploy the new task definition to ECS
-      - name: Deploy Amazon ECS task definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
-          service: ${{ vars.ECS_SERVICE }}
-          cluster: ${{ vars.ECS_CLUSTER }}
-          wait-for-service-stability: true
+      # Step 7: Register new ECS task definition
+      - name: Register new ECS task definition
+        id: register-task
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://${{ steps.task-def.outputs.task-definition }} \
+            --query "taskDefinition.taskDefinitionArn" \
+            --output text)
 
-      # Step 8: Confirm deployment
+          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
+
+      # Step 8: Deploy updated task definition to ECS
+      - name: Deploy updated image to ECS
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "${{ steps.register-task.outputs.task_definition_arn }}" \
+            --force-new-deployment
+
+      # Step 9: Wait for ECS service to stabilize
+      - name: Wait for ECS deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+
+      # Step 10: Confirm deployment
       - name: Deployment completed
         run: |
           echo "Deployment completed successfully."
