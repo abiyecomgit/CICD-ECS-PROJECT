@@ -1,109 +1,105 @@
-CI/CD Pipeline with GitHub Actions, Docker, Amazon ECR, ECS Fargate, and Terraform
+# End-to-End CI/CD Pipeline on AWS with GitHub Actions, Docker, ECS Fargate & Terraform
 
-Project Overview
+> A hands-on DevOps project that provisions AWS infrastructure with Terraform and automatically builds and deploys a Python Flask application to Amazon ECS Fargate using GitHub Actions and secure OIDC authentication.
 
-In this project, I built a complete CI/CD pipeline for a Python Flask application. The application is developed and tested locally, containerized with Docker, version-controlled with Git and GitHub, deployed to AWS infrastructure created with Terraform, stored in Amazon ECR, run on Amazon ECS Fargate, exposed through an Application Load Balancer, and automatically rebuilt and redeployed with GitHub Actions whenever code is pushed to the main branch.
+**Repository:** [abiyecomgit/CICD-ECS-PROJECT](https://github.com/abiyecomgit/CICD-ECS-PROJECT)  
+**AWS Region:** `us-west-2` (Oregon)  
+**Application:** Python / Flask / Gunicorn  
+**Deployment:** Amazon ECS on AWS Fargate
 
-GitHub Actions authenticates securely to AWS using OIDC instead of long-lived AWS access keys.
+## Table of Contents
 
-All AWS resources are deployed in:
+1. [Project Overview](#project-overview)
+2. [Architecture and Service Connections](#architecture-and-service-connections)
+3. [Technologies](#technologies)
+4. [Repository Structure](#repository-structure)
+5. [Prerequisites](#prerequisites)
+6. [Step-by-Step Implementation](#step-by-step-implementation)
+7. [CI/CD Workflow](#cicd-workflow)
+8. [Verification and Testing](#verification-and-testing)
+9. [Security Practices](#security-practices)
+10. [Troubleshooting](#troubleshooting)
+11. [Cleanup](#cleanup)
+12. [Lessons Learned](#lessons-learned)
 
-us-west-2
+## Project Overview
 
-Architecture
+This project demonstrates an automated software delivery workflow. I developed and tested a Flask application locally, packaged it as a Docker image, and deployed it to an ECS Fargate service behind an Application Load Balancer (ALB). Terraform manages the AWS infrastructure, while GitHub Actions builds and redeploys the application whenever changes are pushed to the `main` branch.
 
+GitHub Actions uses **OpenID Connect (OIDC)** to request temporary AWS credentials instead of storing long-lived AWS access keys.
 
+### Objectives
 
-Architecture overview: Developer → GitHub → GitHub Actions → Docker build → Amazon ECR → Amazon ECS Fargate → Application Load Balancer → Flask application. Terraform provisions and manages the AWS infrastructure.
+- Build and test a Flask application locally.
+- Package the application in a Docker image running as a non-root user.
+- Provision networking, IAM, ECR, ECS, ALB, and CloudWatch using Terraform.
+- Run ECS Fargate tasks in private subnets, reachable through a public ALB.
+- Automate image builds and deployments through GitHub Actions.
+- Verify health checks, deployments, logging, and application availability.
+- Safely remove infrastructure when no longer required.
 
-Developer
-   ↓
-Git Commit & Push
-   ↓
-GitHub Repository
-   ↓
-GitHub Actions
-   ↓
-AWS Authentication with OIDC
-   ↓
-Build Docker Image
-   ↓
-Push Image to Amazon ECR
-   ↓
-Register New ECS Task Definition
-   ↓
-Update ECS Service
-   ↓
-Amazon ECS Fargate
-   ↓
-Application Load Balancer
-   ↓
-Flask Application
+## Architecture and Service Connections
 
-Terraform manages the AWS infrastructure:
+### Application delivery
 
-Terraform
-   ↓
-VPC
-├── Public Subnet A - us-west-2a
-├── Public Subnet B - us-west-2b
-├── Private Subnet A - us-west-2a
-└── Private Subnet B - us-west-2b
-   ↓
-Internet Gateway + NAT Gateway
-   ↓
-Security Groups
-   ↓
-Application Load Balancer
-   ↓
-Amazon ECR
-   ↓
-Amazon ECS Fargate
-   ↓
-IAM + CloudWatch
+```mermaid
+flowchart TD
+    A[Developer] --> B[GitHub Repository]
+    B -->|Push to main| C[GitHub Actions]
+    C -->|OIDC temporary credentials| D[AWS IAM]
+    C --> E[Docker Image Build]
+    E --> F[Amazon ECR]
+    F --> G[ECS Task Definition]
+    G --> H[Amazon ECS Fargate]
+    I[Internet Users] --> J[Application Load Balancer]
+    J --> H
+    H --> K[Flask Application]
+    H --> L[Amazon CloudWatch Logs]
+    M[Terraform] --> N[AWS Networking, IAM, ECR, ECS, ALB, Logs]
+```
 
-Technologies Used
+### Network layout
 
-Python
+```text
+AWS Region: us-west-2
+└── VPC
+    ├── Public subnet A (us-west-2a)
+    ├── Public subnet B (us-west-2b)
+    │   └── Internet-facing Application Load Balancer
+    ├── Private subnet A (us-west-2a)
+    ├── Private subnet B (us-west-2b)
+    │   └── ECS Fargate application tasks
+    ├── Internet Gateway (public routing)
+    ├── NAT Gateway (private-subnet outbound access)
+    └── Security groups (restrict network traffic)
+```
 
-Flask
+**How the components work together:** Terraform provisions the infrastructure. GitHub stores the code and triggers GitHub Actions. GitHub Actions assumes an IAM role through OIDC, builds a Docker image, and pushes it to ECR. ECS launches Fargate tasks using the image. The public ALB routes incoming requests to healthy tasks in private subnets. CloudWatch collects application logs.
 
-Gunicorn
+## Technologies
 
-Docker
+| Technology | Role |
+|---|---|
+| Python, Flask, Gunicorn | Application and web server |
+| Docker | Build and run container images |
+| Git and GitHub | Version control and source hosting |
+| GitHub Actions | CI/CD automation |
+| GitHub OIDC and AWS IAM | Temporary authentication and access control |
+| Terraform | Infrastructure as Code |
+| AWS CLI | AWS authentication and verification |
+| Amazon VPC | Networking, subnets, gateways, and routing |
+| Amazon ECR | Private container image registry |
+| Amazon ECS Fargate | Serverless container execution |
+| Application Load Balancer | Public application entry point and health checks |
+| Amazon CloudWatch | Centralized application logs |
 
-Git
+## Repository Structure
 
-GitHub
-
-GitHub Actions
-
-Terraform
-
-AWS CLI
-
-Amazon VPC
-
-Amazon ECR
-
-Amazon ECS Fargate
-
-Application Load Balancer
-
-AWS IAM
-
-GitHub OIDC
-
-Amazon CloudWatch
-
-Project Structure
-
+```text
 CICD-ECS-PROJECT/
-│
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml
-│
 ├── terraform/
 │   ├── .terraform.lock.hcl
 │   ├── alb.tf
@@ -118,760 +114,290 @@ CICD-ECS-PROJECT/
 │   ├── security.tf
 │   ├── variables.tf
 │   └── versions.tf
-│
 ├── .dockerignore
 ├── .gitignore
 ├── Dockerfile
 ├── app.py
 ├── requirements.txt
 └── README.md
+```
 
-Stage 1 — Create and Test the Flask Application
+### Terraform file responsibilities
 
-1. Clone the Repository
+| File | Purpose |
+|---|---|
+| `versions.tf` | Terraform and provider version requirements |
+| `provider.tf` | AWS provider configuration for `us-west-2` |
+| `variables.tf` | Reusable input variables |
+| `networking.tf` | VPC, public/private subnets, gateways, routes |
+| `security.tf` | ALB and ECS security groups and rules |
+| `ecr.tf` | ECR repository and lifecycle settings |
+| `iam.tf` | ECS execution and task roles |
+| `logs.tf` | CloudWatch log group |
+| `alb.tf` | Load balancer, target group, listener |
+| `ecs.tf` | ECS cluster, task definition, Fargate service |
+| `github-actions.tf` | GitHub OIDC provider and deployment role |
+| `outputs.tf` | Infrastructure identifiers and application URL |
 
+## Prerequisites
+
+Install and configure **Git**, **Python 3**, **Docker Desktop**, **AWS CLI**, and **Terraform**. Use an AWS identity with permissions to create the resources defined in the Terraform configuration. AWS services used here can incur charges.
+
+```bash
+python3 --version
+docker --version
+aws --version
+terraform --version
+git --version
+aws configure get region
+aws sts get-caller-identity
+```
+
+The configured AWS region for this project is `us-west-2`. Never commit AWS access keys, passwords, Terraform state, or `.env` files.
+
+## Step-by-Step Implementation
+
+### Stage 1 — Clone and test the Flask application
+
+**1. Clone the repository.** This provides the application, Dockerfile, Terraform configuration, and GitHub Actions workflow.
+
+```bash
 git clone https://github.com/abiyecomgit/CICD-ECS-PROJECT.git
 cd CICD-ECS-PROJECT
+```
 
-2. Verify Python
+**2. Create a Python environment and install dependencies.** A virtual environment isolates the application's Python packages.
 
-python3 --version
-
-3. Create a Virtual Environment
-
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
-
-The terminal should show:
-
-(.venv)
-
-4. Install Dependencies
-
-pip install -r requirements.txt
-
-Verify Flask and Gunicorn:
-
+python3 -m pip install -r requirements.txt
 pip show Flask
 pip show gunicorn
+```
 
-5. Run the Flask Application
+**3. Run and verify the application locally.** This checks application behavior before containerization.
 
+```bash
 python3 app.py
+```
 
-Open:
+Visit `http://localhost:5000` and expect **Hello from CI/CD Pipeline!**. In another terminal, check:
 
-http://localhost:5000
-
-Expected page:
-
-Hello from CI/CD Pipeline!
-
-Test the health endpoint:
-
+```bash
 curl http://localhost:5000/health
+```
 
-Example response:
+The documented health response includes `application: cicd-ecs-project`, `aws_region: us-west-2`, and `status: healthy`. Stop the development server with **Ctrl+C**.
 
-{
-  "application": "cicd-ecs-project",
-  "aws_region": "us-west-2",
-  "status": "healthy"
-}
+### Stage 2 — Build and test the Docker image
 
-Stop the Flask development server with CTRL + C.
+**4. Build the image.** Docker packages the application and its dependencies into a portable artifact.
 
-Stage 2 — Containerize the Application with Docker
-
-6. Verify Docker
-
-Make sure Docker Desktop is running.
-
-docker --version
-docker info
-
-7. Build the Docker Image
-
-From the project root:
-
+```bash
 docker build -t cicd-ecs-app:local .
-
-Verify the image:
-
 docker images cicd-ecs-app
+```
 
-Expected image:
+**5. Run and inspect the container.** Port `3000` on the laptop forwards to port `5000` inside the container.
 
-cicd-ecs-app:local
-
-8. Run the Docker Container Locally
-
+```bash
 docker run -d \
   --name cicd-ecs-container \
   -p 3000:5000 \
   cicd-ecs-app:local
 
-Port mapping:
-
-localhost:3000 → container:5000
-
-Verify the running container:
-
 docker ps
-
-Expected mapping:
-
-0.0.0.0:3000->5000/tcp
-
-9. Verify the Containerized Application
-
-Open:
-
-http://localhost:3000
-
-Expected:
-
-Hello from CI/CD Pipeline!
-
-Health check:
-
 curl http://localhost:3000/health
-
-Check logs:
-
 docker logs cicd-ecs-container
-
-Verify the container is running as a non-root user:
-
 docker exec cicd-ecs-container whoami
+```
 
-Expected:
+Open `http://localhost:3000`. The documented container user is `appuser`, demonstrating non-root execution.
 
-appuser
+**6. Remove the test container.** This leaves the built image available locally.
 
-10. Stop and Remove the Local Container
-
+```bash
 docker stop cicd-ecs-container
 docker rm cicd-ecs-container
+```
 
-The Docker image remains available locally.
+### Stage 3 — Initialize and validate Terraform
 
-Stage 3 — Verify AWS CLI and Terraform
+**7. Enter the Terraform directory and initialize it.** `init` downloads required providers and prepares the working directory.
 
-11. Verify AWS CLI
-
-aws --version
-aws configure list
-aws configure get region
-
-Expected region:
-
-us-west-2
-
-Verify authentication:
-
-aws sts get-caller-identity
-
-Do not place AWS access keys or secret keys in this repository.
-
-12. Verify Terraform
-
-terraform --version
-
-Move into the Terraform directory:
-
+```bash
 cd terraform
-
-Stage 4 — Provision AWS Infrastructure with Terraform
-
-Terraform creates the AWS infrastructure required to run the application on ECS Fargate.
-
-Terraform Files
-
-File
-
-Purpose
-
-versions.tf
-
-Defines Terraform and AWS provider versions.
-
-provider.tf
-
-Configures AWS and sets the region to us-west-2.
-
-variables.tf
-
-Defines reusable project variables.
-
-networking.tf
-
-Creates the VPC, subnets, Internet Gateway, NAT Gateway, and route tables.
-
-security.tf
-
-Creates ALB and ECS security groups and rules.
-
-ecr.tf
-
-Creates the ECR repository and lifecycle policy.
-
-iam.tf
-
-Creates ECS execution and task IAM roles.
-
-logs.tf
-
-Creates the CloudWatch log group.
-
-alb.tf
-
-Creates the ALB, listener, and target group.
-
-ecs.tf
-
-Creates the ECS cluster, task definition, and Fargate service.
-
-github-actions.tf
-
-Creates GitHub OIDC and the GitHub Actions IAM role.
-
-outputs.tf
-
-Displays useful resource information after deployment.
-
-13. Initialize Terraform
-
 terraform init
-
-Expected:
-
-Terraform has been successfully initialized!
-
-14. Format Terraform
-
 terraform fmt
 terraform fmt -check
-
-15. Validate Terraform
-
 terraform validate
+```
 
-Expected:
+Expected validation message: `Success! The configuration is valid.`
 
-Success! The configuration is valid.
+### Stage 4 — Provision AWS infrastructure
 
-16. Create the Initial Terraform Plan
+**8. Create the initial infrastructure plan with zero ECS tasks.** At this point, the first image may not yet exist in ECR, so `desired_count=0` avoids attempting to start a task with a missing image.
 
-Before the first application image exists in ECR, create the ECS service with zero running tasks:
-
-terraform plan \
-  -var="desired_count=0" \
-  -out=tfplan
-
-This prevents ECS from trying to start a task before an image exists in ECR.
-
-17. Apply the Initial Infrastructure
-
+```bash
+terraform plan -var="desired_count=0" -out=tfplan
 terraform apply tfplan
+```
 
-Terraform creates resources including:
+Terraform provisions the VPC, subnets, Internet/NAT Gateways, route tables, security groups, ECR repository, ECS cluster and service, ALB, IAM roles, and CloudWatch logging.
 
-VPC
+**9. Inspect the deployed resources.** This confirms Terraform has tracked the expected infrastructure.
 
-Two public subnets
-
-Two private subnets
-
-Internet Gateway
-
-NAT Gateway
-
-Route tables
-
-Security groups
-
-ECR repository
-
-ECS cluster
-
-ECS task definition
-
-ECS service
-
-Application Load Balancer
-
-Target group
-
-Listener
-
-IAM roles
-
-CloudWatch log group
-
-18. Verify Terraform Resources
-
+```bash
 terraform state list
 terraform output
+```
 
-Typical outputs include:
+Typical outputs include `aws_region`, `vpc_id`, `ecr_repository_url`, `ecs_cluster_name`, `ecs_service_name`, `alb_dns_name`, and `application_url`.
 
-aws_region
-vpc_id
-ecr_repository_url
-ecs_cluster_name
-ecs_service_name
-alb_dns_name
-application_url
+**Console verification:** In AWS region **Oregon (`us-west-2`)**, review VPC networking, ECR repositories, ECS clusters/services/task definitions, EC2 load balancers and target groups, IAM roles, and CloudWatch log groups.
 
-19. Verify Resources in AWS Console
+### Stage 5 — Configure GitHub Actions access to AWS
 
-Select Oregon (us-west-2) and verify:
+**10. Create the GitHub environment.** Navigate to **Repository → Settings → Environments → New environment**, and create `production`.
 
-VPC → Your VPCs
+**11. Configure the following environment variables** under the `production` environment:
 
-VPC → Subnets
+| Variable | Value |
+|---|---|
+| `AWS_REGION` | `us-west-2` |
+| `ECR_REPOSITORY` | `cicd-ecs-app` |
+| `ECS_CLUSTER` | `cicd-ecs-project-cluster` |
+| `ECS_SERVICE` | `cicd-ecs-project-service` |
+| `CONTAINER_NAME` | `cicd-ecs-app` |
+| `AWS_ROLE_ARN` | IAM role ARN from Terraform output |
 
-VPC → Internet Gateways
+Retrieve the role ARN from the `terraform/` directory:
 
-VPC → NAT Gateways
-
-VPC → Route Tables
-
-VPC / EC2 → Security Groups
-
-ECR → Repositories
-
-ECS → Clusters
-
-ECS → Task Definitions
-
-EC2 → Load Balancers
-
-EC2 → Target Groups
-
-IAM → Roles
-
-CloudWatch → Log groups
-
-Stage 5 — Amazon ECR
-
-The ECR repository is:
-
-cicd-ecs-app
-
-It is configured with:
-
-Image scanning
-
-AES256 encryption
-
-Immutable image tags
-
-Image lifecycle policy
-
-The CI/CD workflow uses a unique Git commit SHA as the image tag so deployments are traceable.
-
-Stage 6 — Configure GitHub OIDC Authentication
-
-GitHub Actions authenticates to AWS using OIDC:
-
-GitHub Actions
-      ↓
-GitHub OIDC Token
-      ↓
-AWS IAM Trust Policy
-      ↓
-Temporary AWS Credentials
-
-This avoids storing long-lived credentials such as:
-
-AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY
-
-20. Create the GitHub Environment
-
-In GitHub:
-
-Repository
-→ Settings
-→ Environments
-→ New environment
-
-Create:
-
-production
-
-The workflow uses:
-
-environment: production
-
-21. Configure GitHub Environment Variables
-
-Go to:
-
-Repository
-→ Settings
-→ Environments
-→ production
-
-Create these environment variables:
-
-AWS_REGION=us-west-2
-ECR_REPOSITORY=cicd-ecs-app
-ECS_CLUSTER=cicd-ecs-project-cluster
-ECS_SERVICE=cicd-ecs-project-service
-CONTAINER_NAME=cicd-ecs-app
-AWS_ROLE_ARN=<YOUR_GITHUB_ACTIONS_IAM_ROLE_ARN>
-
-Retrieve the GitHub Actions IAM role ARN with:
-
+```bash
 terraform output -raw github_actions_role_arn
+```
 
-Do not commit AWS credentials, GitHub tokens, or passwords.
+**12. Verify the OIDC trust relationship.** The IAM role must permit `sts:AssumeRoleWithWebIdentity` and its trust policy must match the actual GitHub repository/environment `sub` claim. This allows GitHub Actions to obtain short-lived credentials without storing AWS secrets.
 
-22. Configure the GitHub OIDC Trust Policy
+### Stage 6 — Trigger automated deployment
 
-The IAM role trust policy must allow:
+**13. Commit and push your code.** The workflow in `.github/workflows/deploy.yml` triggers on pushes to `main`.
 
-sts:AssumeRoleWithWebIdentity
-
-The trust policy must also match the GitHub OIDC sub claim used by the repository and the production environment.
-
-If a customized GitHub OIDC subject template is enabled, inspect the actual OIDC claims and configure the AWS IAM trust policy to match the subject exactly.
-
-Stage 7 — GitHub Actions CI/CD Pipeline
-
-The workflow is stored at:
-
-.github/workflows/deploy.yml
-
-It triggers automatically when code is pushed to:
-
-main
-
-Pipeline flow:
-
-Push to main
-      ↓
-Checkout repository
-      ↓
-Authenticate to AWS using OIDC
-      ↓
-Login to Amazon ECR
-      ↓
-Build Docker image
-      ↓
-Tag image with Git commit SHA
-      ↓
-Push image to ECR
-      ↓
-Download current ECS task definition
-      ↓
-Update Docker image
-      ↓
-Register new ECS task definition
-      ↓
-aws ecs update-service
-      ↓
-Wait for ECS service stability
-      ↓
-Deployment complete
-
-23. GitHub Actions Workflow
-
-name: Build and Deploy to Amazon ECS
-
-on:
-  push:
-    branches:
-      - main
-
-permissions:
-  contents: read
-  id-token: write
-
-jobs:
-  deploy:
-    name: Build and Deploy
-    runs-on: ubuntu-latest
-    environment: production
-
-    env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
-      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
-      CONTAINER_NAME: ${{ vars.CONTAINER_NAME }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build and push Docker image
-        id: build-image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-
-          docker build \
-            --platform linux/amd64 \
-            -t "$IMAGE_URI" \
-            .
-
-          docker push "$IMAGE_URI"
-
-          echo "image=$IMAGE_URI" >> "$GITHUB_OUTPUT"
-
-      - name: Download current ECS task definition
-        run: |
-          TASK_DEFINITION=$(aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE" \
-            --query "services[0].taskDefinition" \
-            --output text)
-
-          aws ecs describe-task-definition \
-            --task-definition "$TASK_DEFINITION" \
-            --query "taskDefinition" \
-            > task-definition.json
-
-      - name: Render Amazon ECS task definition
-        id: task-def
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: task-definition.json
-          container-name: ${{ env.CONTAINER_NAME }}
-          image: ${{ steps.build-image.outputs.image }}
-
-      - name: Register new ECS task definition
-        id: register-task
-        run: |
-          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://${{ steps.task-def.outputs.task-definition }} \
-            --query "taskDefinition.taskDefinitionArn" \
-            --output text)
-
-          echo "task_definition_arn=$TASK_DEFINITION_ARN" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy updated image to ECS
-        run: |
-          aws ecs update-service \
-            --cluster "$ECS_CLUSTER" \
-            --service "$ECS_SERVICE" \
-            --task-definition "${{ steps.register-task.outputs.task_definition_arn }}" \
-            --force-new-deployment
-
-      - name: Wait for ECS deployment
-        run: |
-          aws ecs wait services-stable \
-            --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE"
-
-      - name: Deployment completed
-        run: |
-          echo "Deployment completed successfully."
-
-Stage 8 — Push the Project to GitHub
-
-Check Git:
-
+```bash
+# From the repository root
 git status
-
-Stage files:
-
 git add .
-
-Commit:
-
 git commit -m "Add CI/CD pipeline"
-
-Push:
-
 git push origin main
+```
 
-Because the workflow triggers on main, the push automatically starts GitHub Actions.
+> Run `git commit` only when there are actual changes to commit. If you are replacing only this README, use `git add README.md` instead of `git add .`.
 
-Stage 9 — Verify the CI/CD Pipeline
+The GitHub Actions job checks out the repository, authenticates through OIDC, builds an `linux/amd64` image, tags it with the Git commit SHA, pushes it to ECR, updates the ECS task definition, deploys the ECS service, and waits for service stability.
 
-Go to:
+## CI/CD Workflow
 
-GitHub
-→ CICD-ECS-PROJECT
-→ Actions
+**Workflow file:** `.github/workflows/deploy.yml`  
+**Trigger:** Push to `main`  
+**GitHub environment:** `production`
 
-A successful workflow should show steps similar to:
+```text
+Push to main
+    ↓
+GitHub Actions checkout
+    ↓
+Assume AWS IAM role using OIDC
+    ↓
+Build Docker image (linux/amd64)
+    ↓
+Tag with Git commit SHA and push to ECR
+    ↓
+Update and register ECS task definition
+    ↓
+Update ECS service to the new revision
+    ↓
+Wait for stable ECS deployment
+    ↓
+Application available through the ALB
+```
 
-✓ Checkout repository
-✓ Configure AWS credentials
-✓ Login to Amazon ECR
-✓ Build and push Docker image
-✓ Download current ECS task definition
-✓ Render Amazon ECS task definition
-✓ Register new ECS task definition
-✓ Deploy updated image to ECS
-✓ Wait for ECS deployment
-✓ Deployment completed
+The workflow source of truth is the committed `.github/workflows/deploy.yml` file. The original project documentation describes use of `actions/checkout@v4`, `aws-actions/configure-aws-credentials@v6`, `aws-actions/amazon-ecr-login@v2`, and `aws-actions/amazon-ecs-render-task-definition@v1`.
 
-24. Verify the Docker Image in ECR
+**Why commit SHA tags matter:** Every image is tied to a specific code revision, making deployments traceable. The ECR configuration described in the project also includes image scanning, AES256 encryption, immutable tags, and an image lifecycle policy.
 
-Go to:
+## Verification and Testing
 
-AWS Console
-→ ECR
-→ Repositories
-→ cicd-ecs-app
+### 1. GitHub Actions
 
-A new image should appear with a unique Git commit SHA tag.
+Open **GitHub → CICD-ECS-PROJECT → Actions**. Confirm that checkout, AWS authentication, ECR login, image build/push, task definition registration, ECS service update, and stability checks all succeeded.
 
-25. Verify ECS
+### 2. Amazon ECR
 
-Go to:
+Open **AWS Console → ECR → Repositories → `cicd-ecs-app`**. Confirm an image exists with a Git commit SHA tag.
 
-AWS Console
-→ ECS
-→ Clusters
-→ cicd-ecs-project-cluster
-→ Services
-→ cicd-ecs-project-service
+### 3. Amazon ECS
 
-Verify:
+Open **AWS Console → ECS → Clusters → `cicd-ecs-project-cluster` → Services → `cicd-ecs-project-service`**. After a successful deployment, the documented target is **desired tasks: 1 / running tasks: 1**. Confirm a newer task definition revision was registered.
 
-Desired tasks: 1
-Running tasks: 1
+### 4. ALB target health
 
-Also verify that a newer task definition revision was registered.
+Open **EC2 → Target Groups → `cicd-ecs-tg` → Targets**. Confirm the application target is **Healthy**. The health check endpoint is `/health`.
 
-26. Verify the Target Group
+### 5. Public application
 
-Go to:
+From the `terraform/` directory:
 
-EC2
-→ Target Groups
-→ cicd-ecs-tg
-→ Targets
-
-The ECS target should show:
-
-Healthy
-
-The ALB health check uses:
-
-/health
-
-27. Verify the Application Through the ALB
-
-From the Terraform directory:
-
+```bash
 terraform output -raw application_url
+```
 
-Open the returned URL in your browser.
+Open the URL returned by Terraform. The documented homepage displays **Hello from CI/CD Pipeline!**. Test the `/health` endpoint on the same host.
 
-Expected:
+### 6. Prove continuous deployment
 
-Hello from CI/CD Pipeline!
+Update the homepage text in `app.py`, then commit and push:
 
-Also test:
-
-http://<ALB-DNS-NAME>/health
-
-Stage 10 — Prove Automatic Deployment Works
-
-Modify the application text in app.py, then commit and push:
-
+```bash
 git add app.py
 git commit -m "Update application homepage"
 git push origin main
+```
 
-Do not manually run Docker build, ECR push, or ECS deployment commands.
+Watch the GitHub Actions run. After it succeeds, refresh the ALB URL. Seeing the new text confirms the application was automatically rebuilt and redeployed without a manual Docker push or ECS deployment command.
 
-GitHub Actions should automatically:
+## Security Practices
 
-Detect push
-   ↓
-Build Docker image
-   ↓
-Push image to ECR
-   ↓
-Register new ECS task definition
-   ↓
-Update ECS service
-   ↓
-Start new Fargate task
+- Use **GitHub OIDC** and short-lived AWS credentials rather than permanent access keys in GitHub.
+- Restrict the IAM role trust policy to the intended GitHub repository and `production` environment.
+- Run ECS Fargate tasks in **private subnets**, behind a public ALB.
+- Allow application ingress to ECS only from the ALB security group.
+- Run the Docker application as a **non-root user**.
+- Enable ECR image scanning, encryption, immutable tags, and image lifecycle policies.
+- Tag images with unique Git commit SHAs.
+- Keep `.env`, local virtual environments, Terraform state, and generated plans out of Git.
+- Use CloudWatch for centralized application logging.
 
-After the workflow succeeds, refresh the ALB URL. If the new application text appears, the CI/CD pipeline has been verified end-to-end.
+### Recommended `.gitignore` entries
 
-Security Best Practices Used
-
-GitHub OIDC instead of permanent AWS access keys
-
-Temporary AWS credentials for GitHub Actions
-
-IAM trust restricted to the GitHub repository/environment
-
-ECS Fargate tasks in private subnets
-
-Public ALB in public subnets
-
-ECS security group accepts application traffic only from the ALB
-
-Non-root Docker container user
-
-ECR image scanning
-
-ECR encryption
-
-Immutable Docker image tags
-
-Unique Git SHA image tags
-
-Terraform state excluded from Git
-
-.env files excluded from Git
-
-.venv excluded from Git
-
-CloudWatch logging enabled
-
-Infrastructure managed as code
-
-.gitignore
-
+```gitignore
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
-
-# Virtual Environment
+.pytest_cache/
 .venv/
 venv/
 
-# Environment Variables
+# Secrets and local configuration
 .env
 *.env
 
-# Python Cache
-.pytest_cache/
-
-# macOS
+# Local editor / OS
 .DS_Store
-
-# VS Code
 .vscode/
 
-# Terraform
+# Terraform local files and sensitive state
 .terraform/
 *.tfstate
 *.tfstate.*
@@ -884,146 +410,88 @@ override.tf.json
 *_override.tf.json
 tfplan
 *.tfplan
+```
 
-.terraform.lock.hcl is intentionally committed so Terraform provider versions remain consistent.
+Commit `.terraform.lock.hcl` to keep provider selections reproducible. Keep Terraform state in a protected location; do not upload state files to GitHub.
 
-Challenges and Troubleshooting
+## Troubleshooting
 
-Virtual Environment Could Not Be Activated
+| Issue | Cause or symptom | Resolution documented in this project |
+|---|---|---|
+| Virtual environment activation failed | `.venv/bin/activate` missing | Run `python3 -m venv .venv`, then `source .venv/bin/activate` |
+| Git initialized in the wrong directory | Git root pointed at the home directory | Check `git rev-parse --show-toplevel` and use the correct project directory |
+| Flask `NameError: app is not defined` | Flask app object missing before route definitions | Restore `app = Flask(__name__)` |
+| Terraform ECR syntax error | Plain-language notes were interpreted as HCL | Prefix notes with `#` to make them comments |
+| Terraform security group dependency cycle | ALB and ECS security groups referenced each other in a cycle | Separate security groups from ingress/egress rule resources |
+| GitHub OIDC authentication denied | `sts:AssumeRoleWithWebIdentity` authorization failed | Verify role ARN, `id-token: write`, GitHub environment, token claims, and IAM trust-policy `sub` matching |
 
-Error:
+### Useful diagnostic commands
 
-source: no such file or directory: .venv/bin/activate
-
-Solution:
-
-python3 -m venv .venv
-source .venv/bin/activate
-
-Git Was Initialized in the Wrong Directory
-
-Git initially treated the home directory as the repository.
-
-Verified with:
-
-git rev-parse --show-toplevel
-
-The incorrect home-level Git repository was removed and Git was initialized inside CICD-ECS-PROJECT.
-
-Flask app Was Not Defined
-
-Error:
-
-NameError: name 'app' is not defined
-
-Solution: restore app = Flask(__name__) before the route definitions.
-
-Terraform ECR Syntax Error
-
-Plain English notes were accidentally added as Terraform code.
-
-Incorrect:
-
-Image scanning enabled
-Encryption enabled
-
-Correct:
-
-# Image scanning enabled
-# Encryption enabled
-
-Terraform Security Group Dependency Cycle
-
-Error:
-
-Cycle: aws_security_group.ecs, aws_security_group.alb
-
-Solution: create the security groups separately from the ingress and egress rule resources to remove the circular dependency.
-
-GitHub OIDC Authentication Failure
-
-Error:
-
-Not authorized to perform sts:AssumeRoleWithWebIdentity
-
-Troubleshooting included verifying the GitHub Actions IAM role ARN, confirming id-token: write, checking the production GitHub environment, inspecting the actual GitHub OIDC token claims, and updating the AWS IAM trust policy so the expected sub claim matched the claim GitHub issued.
-
-Useful Verification Commands
-
-Git
-
+```bash
+# Git
 git status
 git remote -v
-git branch
+git rev-parse --show-toplevel
 git log --oneline
 
-Docker
-
+# Docker
 docker images cicd-ecs-app
 docker ps
 docker logs cicd-ecs-container
 
-Terraform
-
+# Terraform (run in terraform/)
 terraform fmt -check
 terraform validate
-terraform plan
 terraform state list
 terraform output
 
-AWS
-
+# AWS
 aws sts get-caller-identity
 aws configure list
 aws configure get region
+```
 
-Cleanup
+## Cleanup
 
-AWS resources such as the NAT Gateway, Application Load Balancer, and ECS Fargate tasks can generate charges.
+> **Cost awareness:** NAT Gateways, ALBs, ECS Fargate tasks, and other provisioned AWS services may incur charges. Destroy resources when the environment is no longer needed.
 
-When the project is no longer required:
+Only run these commands against the intended project and Terraform state. **Do not run them if the state has been lost or is pointing to a different environment.**
 
-cd terraform
+From the repository's `terraform/` directory:
 
-Review the destroy plan:
+**1. Review the destruction plan.**
 
+```bash
 terraform plan \
   -destroy \
   -var="github_repository=abiyecomgit/CICD-ECS-PROJECT" \
   -var="desired_count=0"
+```
 
-Destroy the infrastructure:
+**2. Destroy the Terraform-managed infrastructure.**
 
+```bash
 terraform destroy \
   -var="github_repository=abiyecomgit/CICD-ECS-PROJECT" \
   -var="desired_count=0"
+```
 
-Type yes when prompted.
+Review the planned resources carefully and type `yes` only if they belong to this project.
 
-Verify Terraform no longer tracks resources:
+**3. Verify the cleanup.**
 
+```bash
 terraform state list
+```
 
-Also verify the AWS Console to confirm billable resources have been removed.
+Check the AWS Console for remaining project-specific ECS services, ECR images/repositories, load balancers, NAT Gateways, CloudWatch log groups, and any resources not managed by Terraform. Review AWS Billing / Cost Explorer; historical charges may remain even after deletion.
 
-Final Result
+## Lessons Learned
 
-This project demonstrates a complete DevOps CI/CD workflow:
+This project helped me connect the full DevOps delivery lifecycle: **GitHub tracks changes; GitHub Actions automates delivery; OIDC secures AWS authentication; Docker standardizes the application package; ECR stores images; ECS Fargate runs containers; the ALB exposes healthy tasks; Terraform makes infrastructure repeatable; and CloudWatch supports troubleshooting.**
 
-Developer
-   ↓
-GitHub
-   ↓
-GitHub Actions
-   ↓
-Docker Build
-   ↓
-Amazon ECR
-   ↓
-Amazon ECS Fargate
-   ↓
-Application Load Balancer
-   ↓
-Flask Application
+I also gained practical experience resolving Terraform dependency errors, diagnosing GitHub OIDC trust-policy failures, validating deployments, and managing cloud costs through deliberate cleanup.
 
-Terraform manages the AWS infrastructure while GitHub Actions automates application delivery. The final result is a secure, repeatable, version-controlled, and automated CI/CD pipeline running in AWS us-west-2.
+---
+
+**Project repository:** [github.com/abiyecomgit/CICD-ECS-PROJECT](https://github.com/abiyecomgit/CICD-ECS-PROJECT)
